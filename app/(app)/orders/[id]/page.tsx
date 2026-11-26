@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Types } from "mongoose";
 import { OrderStatusControls } from "@/components/OrderStatusControls";
+import { ReviewForm } from "@/components/ReviewForm";
 import { getSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { canAccessOrder, orderView } from "@/lib/orders";
@@ -105,10 +106,12 @@ export default async function OrderDetailPage({
           </section>
           {orderDto.status === "delivered" && (
             <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm">
-              <h2 className="font-semibold text-slate-800">Rate your meal</h2>
-              <p className="mt-1 text-slate-500">
-                {orderDto.reviewed ? "Thanks for your review!" : "Reviews can be added after delivery."}
-              </p>
+              <h2 className="mb-2 font-semibold text-slate-800">Rate your meal</h2>
+              {orderDto.reviewed ? (
+                <p className="text-green-700">Thanks for your review!</p>
+              ) : (
+                <ReviewForm restaurantId={orderDto.restaurantId} orderId={orderDto.id} />
+              )}
               <Link href={`/restaurants/${orderDto.restaurantId}`} className="mt-3 inline-block font-medium text-[#e23744] hover:underline">
                 View restaurant →
               </Link>
