@@ -24,11 +24,9 @@ export async function POST(request: Request) {
     if (!menuItem) return fail("Menu item not found", 404);
     if (!menuItem.isAvailable) return fail("This menu item is unavailable", 409);
 
-    let cart = await Cart.findOne({ user: session.userId });
-    if (!cart) cart = new Cart({ user: session.userId, items: [], restaurant: null });
-
+    const cart = await Cart.findOne({ user: session.userId }).lean();
     if (
-      cart.restaurant &&
+      cart?.restaurant &&
       cart.restaurant.toString() !== menuItem.restaurant.toString()
     ) {
       return fail(
@@ -37,25 +35,46 @@ export async function POST(request: Request) {
       );
     }
 
-    const existing = cart.items.find(
-      (item) => item.menuItem.toString() === body.menuItemId,
-    );
-    if (existing) {
-      if (existing.qty + body.qty > 50) {
-        return fail("Maximum quantity per item is 50", 400);
-      }
-      existing.qty += body.qty;
+    const itemData = {
+      menuItem: menuItem._id,
+      name: menuItem.name,
+      price: menuItem.price,
+      qty: body.qty,
+      isVeg: menuItem.isVeg,
+    };
+
+    if (!cart) {
+      await Cart.create({
+        user: session.userId,
+        restaurant: menuItem.restaurant,
+        items: [itemData],
+      });
     } else {
-      cart.items.push({
-        menuItem: menuItem._id,
-        name: menuItem.name,
-        price: menuItem.price,
-        qty: body.qty,
-        isVeg: menuItem.isVeg,
-      } as unknown as (typeof cart.items)[number]);
+      const existing = cart.items.find(
+        (item) => item.menuItem.toString() === body.menuItemId,
+      );
+      if (existing) {
+        if (existing.qty + body.qty > 50) {
+          return fail("Maximum quantity per item is 50", 400);
+        }
+        const result = await Cart.updateOne(
+          {
+            user: session.userId,
+            "items._id": existing._id,
+            "items.qty": existing.qty,
+          },
+          { $inc: { "items.$.qty": body.qty } },
+        );
+        if (!result.matchedCount) {
+          return fail("Cart changed, please retry", 409);
+        }
+      } else {
+        await Cart.updateOne(
+          { user: session.userId },
+          { $push: { items: itemData }, $set: { restaurant: menuItem.restaurant } },
+        );
+      }
     }
-    cart.restaurant = menuItem.restaurant;
-    await cart.save();
 
     return ok({ cart: await getCartView(session.userId) }, 201);
   } catch (error) {

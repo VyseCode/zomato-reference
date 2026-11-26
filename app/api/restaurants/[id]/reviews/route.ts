@@ -118,11 +118,24 @@ export async function POST(
       rating: body.rating,
       text: body.text,
     });
-    const count = restaurant.ratingCount;
-    restaurant.ratingAvg =
-      Math.round(((restaurant.ratingAvg * count + body.rating) / (count + 1)) * 10) / 10;
-    restaurant.ratingCount = count + 1;
-    await restaurant.save();
+    await Restaurant.updateOne({ _id: restaurant._id, ratingCount: { $gte: 0 } }, [
+      {
+        $set: {
+          ratingAvg: {
+            $round: [
+              {
+                $divide: [
+                  { $add: [{ $multiply: ["$ratingAvg", "$ratingCount"] }, body.rating] },
+                  { $add: ["$ratingCount", 1] },
+                ],
+              },
+              1,
+            ],
+          },
+          ratingCount: { $add: ["$ratingCount", 1] },
+        },
+      },
+    ], { updatePipeline: true });
 
     const author = await User.findById(session.userId).select("name").lean();
     return ok(

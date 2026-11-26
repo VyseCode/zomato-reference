@@ -32,7 +32,7 @@ export default async function RestaurantPage({
   await connectDB();
   const [restaurant, menuItems, cart, reviews] = await Promise.all([
     Restaurant.findById(id).lean(),
-    MenuItem.find({ restaurant: id }).sort({ category: 1, name: 1 }).lean(),
+    MenuItem.find({ restaurant: id }).sort({ category: 1, name: 1 }).limit(100).lean(),
     getCartView(session.userId),
     Review.find({ restaurant: id })
       .populate("user", "name")

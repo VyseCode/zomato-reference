@@ -1,3 +1,4 @@
+import { Types } from "mongoose";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { fail, handleError, ok } from "@/lib/api";
@@ -12,7 +13,7 @@ const bodySchema = z.object({
 });
 
 async function setQty(
-  _request: Request,
+  request: Request,
   context: RouteContext<"/api/cart/items/[itemId]">,
   deleteItem: boolean,
 ) {
@@ -21,27 +22,34 @@ async function setQty(
     if (!session) return fail("You must be signed in", 401);
 
     const { itemId } = paramsSchema.parse(await context.params);
-    const qty = deleteItem
-      ? 0
-      : bodySchema.parse(await _request.json()).qty;
+    const qty = deleteItem ? 0 : bodySchema.parse(await request.json()).qty;
     await connectDB();
 
-    const cart = await Cart.findOne({ user: session.userId });
+    const cart = await Cart.findOne({ user: session.userId }).lean();
     if (!cart) return fail("Cart not found", 404);
 
-    const index = cart.items.findIndex(
-      (item) => item._id.toString() === itemId,
-    );
-    if (index === -1) return fail("Item not found in your cart", 404);
+    const item = cart.items.find((entry) => entry._id.toString() === itemId);
+    if (!item) return fail("Item not found in your cart", 404);
 
     if (qty === 0) {
-      cart.items.splice(index, 1);
+      await Cart.updateOne(
+        { user: session.userId },
+        { $pull: { items: { _id: new Types.ObjectId(itemId) } } },
+      );
     } else {
-      cart.items[index].qty = qty;
+      const result = await Cart.updateOne(
+        { user: session.userId, "items._id": itemId, "items.qty": item.qty },
+        { $inc: { "items.$.qty": qty - item.qty } },
+      );
+      if (!result.matchedCount) {
+        return fail("Cart changed, please retry", 409);
+      }
     }
-    if (cart.items.length === 0) cart.restaurant = null;
-    await cart.save();
 
+    await Cart.updateOne(
+      { user: session.userId, items: { $size: 0 } },
+      { $set: { restaurant: null } },
+    );
     return ok({ cart: await getCartView(session.userId) });
   } catch (error) {
     return handleError(error);

@@ -35,21 +35,33 @@ export async function PATCH(
     await review.save();
 
     if (body.rating !== undefined && body.rating !== oldRating) {
-      const restaurant = await Restaurant.findById(review.restaurant);
-      if (restaurant && restaurant.ratingCount > 0) {
-        restaurant.ratingAvg =
-          Math.round(
-            Math.min(
-              5,
-              Math.max(
-                0,
-                restaurant.ratingAvg +
-                  (body.rating - oldRating) / restaurant.ratingCount,
-              ),
-            ) * 10,
-          ) / 10;
-        await restaurant.save();
-      }
+      const delta = body.rating - oldRating;
+      await Restaurant.updateOne(
+        { _id: review.restaurant, ratingCount: { $gte: 1 } },
+        [
+          {
+            $set: {
+              ratingAvg: {
+                $round: [
+                  {
+                    $min: [
+                      5,
+                      {
+                        $max: [
+                          0,
+                          { $add: ["$ratingAvg", { $divide: [delta, "$ratingCount"] }] },
+                        ],
+                      },
+                    ],
+                  },
+                  1,
+                ],
+              },
+            },
+          },
+        ],
+        { updatePipeline: true },
+      );
     }
 
     return ok({

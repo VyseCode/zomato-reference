@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
-import { fail, handleError, ok, readJson } from "@/lib/api";
+import { fail, handleError, isDuplicateKeyError, ok, paginationFrom, readJson } from "@/lib/api";
 import { connectDB } from "@/lib/db";
 import { menuItemSchema, objectId } from "@/lib/schemas";
 import { toMenuItem } from "@/lib/serialize";
@@ -18,6 +18,7 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const category = (searchParams.get("category") ?? "").trim();
     const availableOnly = searchParams.get("availableOnly") === "1";
+    const { page, limit, skip } = paginationFrom(searchParams, 50);
 
     await connectDB();
     if (!(await Restaurant.exists({ _id: id }))) {
@@ -28,8 +29,17 @@ export async function GET(
     if (category) filter.category = category;
     if (availableOnly) filter.isAvailable = true;
 
-    const docs = await MenuItem.find(filter).sort({ category: 1, name: 1 }).limit(100).lean();
-    return ok({ items: docs.map(toMenuItem), total: docs.length });
+    const [docs, total] = await Promise.all([
+      MenuItem.find(filter).sort({ category: 1, name: 1 }).skip(skip).limit(limit).lean(),
+      MenuItem.countDocuments(filter),
+    ]);
+    return ok({
+      items: docs.map(toMenuItem),
+      page,
+      limit,
+      total,
+      hasMore: skip + docs.length < total,
+    });
   } catch (error) {
     return handleError(error);
   }
@@ -56,6 +66,9 @@ export async function POST(
     const item = await MenuItem.create({ ...body, restaurant: id });
     return ok(toMenuItem(item), 201);
   } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      return fail("A menu item with that name already exists", 409);
+    }
     return handleError(error);
   }
 }
