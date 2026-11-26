@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { fail, handleError, ok, readJson } from "@/lib/api";
 import { connectDB } from "@/lib/db";
 import { objectId, restaurantPatchSchema } from "@/lib/schemas";
+import { toLocation } from "@/lib/search";
 import { toRestaurantCard } from "@/lib/serialize";
 import { Favorite } from "@/models/Favorite";
 import { Restaurant } from "@/models/Restaurant";
@@ -44,7 +45,7 @@ export async function PATCH(
     if (!session) return fail("You must be signed in", 401);
 
     const { id } = paramsSchema.parse(await context.params);
-    const body = restaurantPatchSchema.parse(await readJson(request));
+    const { lat, lng, ...body } = restaurantPatchSchema.parse(await readJson(request));
     await connectDB();
 
     const restaurant = await Restaurant.findById(id);
@@ -54,6 +55,8 @@ export async function PATCH(
     }
 
     Object.assign(restaurant, body);
+    const location = toLocation(lat, lng);
+    if (location) restaurant.location = location;
     await restaurant.save();
     return ok(toRestaurantCard(restaurant));
   } catch (error) {

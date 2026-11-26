@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { fail, handleError, ok, readJson } from "@/lib/api";
 import { connectDB } from "@/lib/db";
 import { menuItemPatchSchema, objectId } from "@/lib/schemas";
+import { refreshMenuNames } from "@/lib/search";
 import { toMenuItem } from "@/lib/serialize";
 import { MenuItem } from "@/models/MenuItem";
 import { Restaurant } from "@/models/Restaurant";
@@ -36,6 +37,7 @@ export async function PATCH(
 
     Object.assign(item, body);
     await item.save();
+    await refreshMenuNames(item.restaurant.toString());
     return ok(toMenuItem(item));
   } catch (error) {
     return handleError(error);
@@ -57,6 +59,7 @@ export async function DELETE(
     if (item instanceof Response) return item;
 
     await item.deleteOne();
+    await refreshMenuNames(item.restaurant.toString());
     return ok({ ok: true });
   } catch (error) {
     return handleError(error);

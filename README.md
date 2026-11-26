@@ -9,7 +9,7 @@ Customers discover restaurants, browse menus, build a single-restaurant cart, sa
 - Email/password auth with bcrypt hashing, signed JWT in an HTTP-only cookie, and protected route group.
 - Partner-owned restaurants with cuisines, area, ETA, delivery fee, minimum order and aggregate rating.
 - Menu management with veg/non-veg flags and availability toggles.
-- Search by name/cuisine/area, area and cuisine filters, rating/ETA/newest sorting, capped pagination.
+- Ranked full-text search across restaurant names, cuisines, areas, descriptions and available dish names, plus area/cuisine filters, radius-based geo filtering, relevance/distance/rating/ETA/newest sorting and capped pagination.
 - Single-restaurant cart with server-enforced mixing guard, availability checks and minimum-order validation. Cart math is recomputed from the database at checkout — client prices are never trusted.
 - Address CRUD, with deletion blocked while an address is used by an active order.
 - Orders with snapshot items/address, status workflow (`placed → confirmed → preparing → out_for_delivery → delivered`, plus `cancelled`) and a tracking timeline. Only the correct actor may advance or cancel an order.
@@ -69,8 +69,8 @@ npm run start -- -p 3208
 | POST | `/api/auth/logout` | session | Clear session cookie |
 | GET | `/api/auth/me` | public | Current user or `null` |
 | GET/PATCH | `/api/users/me` | session | Profile; PATCH supports `becomePartner` |
-| GET/POST | `/api/restaurants` | public / partner | Paginated discovery with `q`, `area`, `cuisine`, `sort` / create |
-| GET/PATCH | `/api/restaurants/[id]` | public / owner | Detail / update (including `isActive`) |
+| GET/POST | `/api/restaurants` | public / partner | Ranked discovery with `q`, `area`, `cuisine`, `sort`, `lat`, `lng`, `radiusKm` / create (optional `lat`, `lng`) |
+| GET/PATCH | `/api/restaurants/[id]` | public / owner | Detail / update (including `isActive`, `lat`, `lng`) |
 | GET/POST | `/api/restaurants/[id]/menu` | public / owner | Paginated menu / add item |
 | PATCH/DELETE | `/api/menu/[itemId]` | owner | Update / remove menu item |
 | GET/POST | `/api/restaurants/[id]/reviews` | public / session | Reviews list / create after delivery |
@@ -90,6 +90,12 @@ npm run start -- -p 3208
 
 All list endpoints accept `page` and `limit` and cap `limit` at 50. Mutations are zod-validated and authorization is enforced server-side; password hashes are never serialized.
 
+### Search and geo ranking
+
+`/api/restaurants` uses a weighted MongoDB text index (`name` ×10, `cuisines` ×6, available `menuNames` ×4, `area` ×3, `description` ×1) and sorts by `$meta: "textScore"` when `q` is present, so a dish, cuisine, restaurant or area match is returned in relevance order. `menuNames` is refreshed whenever a partner adds, renames or removes a menu item. Results include `score` for text searches.
+
+Supplying `lat` and `lng` filters restaurants to a `radiusKm` circle (default 10 km, capped at 100 km) using a `2dsphere` index; results include `distanceKm`. With `sort=distance` and no text query, the query sorts by actual distance; when `q` and coordinates are combined, results are filtered by radius and ranked by text relevance (MongoDB does not allow `$text` and `$near` in one query). `sort` also accepts `relevance`, `rating`, `eta` and `newest`; without a query, `relevance` falls back to rating. Pagination (`page`, `limit`) is applied after ranking.
+
 ## Verification
 
 `npm run lint`, `npm run typecheck`, `npm run build` and `npm run seed` pass cleanly. A 126-assertion curl matrix covers auth, discovery, CRUD, all edge cases (mixed-restaurant cart, below-minimum order, wrong-actor transitions, pre-delivery review, address in active order), engagement, dashboards and page statuses.
@@ -99,6 +105,7 @@ All list endpoints accept `page` and `limit` and cap `limit` at 50. Mutations ar
 - No payment gateway, real delivery-rider assignment, websocket live tracking or image uploads; cards use gradient placeholders.
 - Ratings are stored as a rounded weighted average seeded with historical counts; individual historical reviews are not stored.
 - Canceling a delivered order is not supported; status transitions are deliberately one-way.
-- Search uses case-insensitive regex filters rather than a full-text score sort.
+- Full-text search matches whole (stemmed) words, not prefixes or typos; queries with only one-character tokens fall back to the legacy escaped-regex filter.
+- Coordinates are optional on created restaurants; restaurants without coordinates never match radius searches.
 - No rate limiting, email verification, password reset or multi-tenancy; `JWT_SECRET` must be replaced in production.
 - Restaurant deletion is intentionally not exposed because completed orders reference restaurants.

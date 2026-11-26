@@ -30,7 +30,14 @@ export function RestaurantCard({ restaurant }: { restaurant: RestaurantCardDTO }
             </span>
           </div>
           <p className="truncate text-xs text-slate-500">{restaurant.cuisines.join(", ")}</p>
-          <p className="text-xs text-slate-500">{restaurant.area}</p>
+          <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span>{restaurant.area}</span>
+            {typeof restaurant.distanceKm === "number" && (
+              <span className="shrink-0 font-medium text-[#e23744]">
+                {restaurant.distanceKm} km away
+              </span>
+            )}
+          </div>
           <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
             <span>₹{restaurant.minimumOrder} min</span>
             <span>₹{restaurant.deliveryFee} delivery</span>

@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { fail, handleError, isDuplicateKeyError, ok, paginationFrom, readJson } from "@/lib/api";
 import { connectDB } from "@/lib/db";
 import { menuItemSchema, objectId } from "@/lib/schemas";
+import { refreshMenuNames } from "@/lib/search";
 import { toMenuItem } from "@/lib/serialize";
 import { MenuItem } from "@/models/MenuItem";
 import { Restaurant } from "@/models/Restaurant";
@@ -64,6 +65,7 @@ export async function POST(
     }
 
     const item = await MenuItem.create({ ...body, restaurant: id });
+    await refreshMenuNames(id);
     return ok(toMenuItem(item), 201);
   } catch (error) {
     if (isDuplicateKeyError(error)) {

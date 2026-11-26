@@ -12,6 +12,8 @@ export const restaurantSchema = z.object({
   etaMinutes: z.number().int().min(5).max(180),
   deliveryFee: z.number().min(0).max(500),
   minimumOrder: z.number().min(0).max(10000),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
   isActive: z.boolean().default(true),
 });
 
