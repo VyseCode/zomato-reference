@@ -4,6 +4,7 @@ import { connectDB } from "@/lib/db";
 import { restaurantSchema } from "@/lib/schemas";
 import { toRestaurantCard } from "@/lib/serialize";
 import { listRestaurants } from "@/lib/queries";
+import { toLocation } from "@/lib/search";
 import { Restaurant } from "@/models/Restaurant";
 import { User } from "@/models/User";
 
@@ -12,6 +13,10 @@ export async function GET(request: Request) {
     const session = await getSession();
     const { searchParams } = new URL(request.url);
     const { page, limit } = paginationFrom(searchParams);
+    const numberParam = (name: string) => {
+      const raw = searchParams.get(name);
+      return raw === null || raw === "" ? NaN : Number(raw);
+    };
 
     await connectDB();
     return ok(
@@ -21,6 +26,9 @@ export async function GET(request: Request) {
         area: searchParams.get("area") ?? "",
         cuisine: searchParams.get("cuisine") ?? "",
         sort: searchParams.get("sort") ?? "",
+        lat: numberParam("lat"),
+        lng: numberParam("lng"),
+        radiusKm: numberParam("radiusKm"),
         page,
         limit,
       }),
@@ -41,9 +49,10 @@ export async function POST(request: Request) {
       return fail("A partner account is required to list restaurants", 403);
     }
 
-    const body = restaurantSchema.parse(await request.json());
+    const { lat, lng, ...body } = restaurantSchema.parse(await request.json());
     const restaurant = await Restaurant.create({
       ...body,
+      location: toLocation(lat, lng),
       owner: session.userId,
       ratingAvg: 0,
       ratingCount: 0,

@@ -15,6 +15,8 @@ export type RestaurantCardDTO = {
   ratingCount: number;
   isActive: boolean;
   favorite: boolean;
+  score?: number;
+  distanceKm?: number;
 };
 
 export type MenuItemDTO = {
@@ -54,6 +56,8 @@ type LeanRestaurant = {
   ratingAvg: number;
   ratingCount: number;
   isActive: boolean;
+  score?: number;
+  distanceKm?: number;
 };
 
 type LeanMenuItem = {
@@ -98,6 +102,8 @@ export function toRestaurantCard(
     ratingCount: doc.ratingCount ?? 0,
     isActive: doc.isActive ?? true,
     favorite: favoriteIds.has(doc._id.toString()),
+    ...(typeof doc.score === "number" ? { score: doc.score } : {}),
+    ...(typeof doc.distanceKm === "number" ? { distanceKm: doc.distanceKm } : {}),
   };
 }
 

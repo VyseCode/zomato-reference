@@ -37,10 +37,16 @@ const restaurantSchema = new mongoose.Schema(
     ratingAvg: { type: Number, default: 0 },
     ratingCount: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    menuNames: [String],
+    location: { type: { type: String, enum: ["Point"] }, coordinates: [Number] },
   },
   { timestamps: true },
 );
-restaurantSchema.index({ name: "text", cuisines: "text", area: "text" });
+restaurantSchema.index(
+  { name: "text", cuisines: "text", area: "text", description: "text", menuNames: "text" },
+  { name: "restaurant_search_text", weights: { name: 10, cuisines: 6, menuNames: 4, area: 3, description: 1 } },
+);
+restaurantSchema.index({ location: "2dsphere" });
 restaurantSchema.index({ area: 1, isActive: 1, ratingAvg: -1 });
 
 const menuItemSchema = new mongoose.Schema(
@@ -205,6 +211,24 @@ const restaurantSeeds = [
   },
 ];
 
+const areaCoordinates = {
+  Indiranagar: [12.9719, 77.6412],
+  Koramangala: [12.9352, 77.6245],
+  Jayanagar: [12.925, 77.5938],
+  "HSR Layout": [12.9116, 77.6389],
+  Whitefield: [12.9698, 77.7499],
+  "Electronic City": [12.8399, 77.677],
+};
+
+const coordinateOffsets = {
+  wok: [0.0015, -0.0024],
+  burger: [0.0013, -0.0024],
+  nonna: [0.0005, 0.0003],
+  sunrise: [-0.0004, 0.0012],
+  tandoor: [0.0001, 0.0003],
+  midnight: [0.0002, -0.0001],
+};
+
 const menuSeeds = {
   spice: [
     ["Chicken Biryani", "Biryani", 289, false, true],
@@ -284,12 +308,26 @@ async function main() {
   const [priya, marcus, alex, sofia, rahul] = users;
 
   const restaurants = await Restaurant.create(
-    restaurantSeeds.map(({ owner, ...rest }) => ({
-      ...rest,
-      owner: [priya, marcus, alex, sofia, rahul][owner]._id,
-      imageUrl: "",
-      isActive: rest.isActive ?? true,
-    })),
+    restaurantSeeds.map(({ key, owner, ...rest }) => {
+      const [areaLat, areaLng] = areaCoordinates[rest.area] ?? [12.9716, 77.5946];
+      const [offsetLat, offsetLng] = coordinateOffsets[key] ?? [0, 0];
+      const lat = areaLat + offsetLat;
+      const lng = areaLng + offsetLng;
+      return {
+        ...rest,
+        owner: [priya, marcus, alex, sofia, rahul][owner]._id,
+        imageUrl: "",
+        isActive: rest.isActive ?? true,
+        location: { type: "Point", coordinates: [lng, lat] },
+        menuNames: [
+          ...new Set(
+            menuSeeds[key]
+              .filter(([, , , , available]) => available)
+              .map(([name]) => name),
+          ),
+        ],
+      };
+    }),
   );
   const byKey = Object.fromEntries(
     restaurants.map((restaurant, index) => [restaurantSeeds[index].key, restaurant]),

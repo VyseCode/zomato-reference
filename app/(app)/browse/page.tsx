@@ -10,28 +10,37 @@ function param(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 }
 
-function pageLink(
-  base: { q: string; area: string; cuisine: string; sort: string },
-  page: number,
-) {
+function pageLink(base: Record<string, string>, page: number) {
   const params = new URLSearchParams({ ...base, page: String(page) });
   return `/browse?${params.toString()}`;
 }
 
 export default async function BrowsePage({ searchParams }: PageProps<"/browse">) {
   const raw = await searchParams;
+  const q = param(raw.q);
   const filters = {
-    q: param(raw.q),
+    q,
     area: param(raw.area),
     cuisine: param(raw.cuisine),
-    sort: param(raw.sort) || "newest",
+    lat: param(raw.lat),
+    lng: param(raw.lng),
+    radiusKm: param(raw.radiusKm) || "10",
+    sort: param(raw.sort) || (q ? "relevance" : "newest"),
   };
   const page = Math.max(1, Number(param(raw.page)) || 1);
 
   const session = await getSession();
   await connectDB();
   const [{ restaurants, total, hasMore }, all] = await Promise.all([
-    listRestaurants({ ...filters, page, limit: 12, viewerId: session?.userId }),
+    listRestaurants({
+      ...filters,
+      lat: filters.lat ? Number(filters.lat) : NaN,
+      lng: filters.lng ? Number(filters.lng) : NaN,
+      radiusKm: Number(filters.radiusKm),
+      page,
+      limit: 12,
+      viewerId: session?.userId,
+    }),
     listRestaurants({ limit: 50 }),
   ]);
   const areas = Array.from(new Set(all.restaurants.map((item) => item.area))).sort();
@@ -48,35 +57,60 @@ export default async function BrowsePage({ searchParams }: PageProps<"/browse">)
         </p>
       </div>
 
-      <form method="get" className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-4">
-        <input
-          name="q"
-          defaultValue={filters.q}
-          placeholder="Search by name, cuisine or area"
-          aria-label="Search restaurants"
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#e23744]"
-        />
-        <select name="area" defaultValue={filters.area} aria-label="Filter by area" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
-          <option value="">All areas</option>
-          {areas.map((area) => (
-            <option key={area} value={area}>{area}</option>
-          ))}
-        </select>
-        <select name="cuisine" defaultValue={filters.cuisine} aria-label="Filter by cuisine" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
-          <option value="">All cuisines</option>
-          {cuisines.map((cuisine) => (
-            <option key={cuisine} value={cuisine}>{cuisine}</option>
-          ))}
-        </select>
-        <div className="flex gap-2">
-          <select name="sort" defaultValue={filters.sort} aria-label="Sort restaurants" className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
-            <option value="newest">Newest</option>
-            <option value="rating">Top rated</option>
-            <option value="eta">Fastest</option>
+      <form method="get" className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="grid gap-3 sm:grid-cols-4">
+          <input
+            name="q"
+            defaultValue={filters.q}
+            placeholder="Search dishes, cuisines, restaurants, areas"
+            aria-label="Search restaurants"
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#e23744]"
+          />
+          <select name="area" defaultValue={filters.area} aria-label="Filter by area" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <option value="">All areas</option>
+            {areas.map((area) => (
+              <option key={area} value={area}>{area}</option>
+            ))}
           </select>
-          <button type="submit" className="rounded-md bg-[#e23744] px-4 py-2 text-sm font-semibold text-white">
-            Go
-          </button>
+          <select name="cuisine" defaultValue={filters.cuisine} aria-label="Filter by cuisine" className="rounded-md border border-slate-300 px-3 py-2 text-sm">
+            <option value="">All cuisines</option>
+            {cuisines.map((cuisine) => (
+              <option key={cuisine} value={cuisine}>{cuisine}</option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <select name="sort" defaultValue={filters.sort} aria-label="Sort restaurants" className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm">
+              <option value="relevance">Relevance</option>
+              <option value="distance">Nearest</option>
+              <option value="rating">Top rated</option>
+              <option value="eta">Fastest</option>
+              <option value="newest">Newest</option>
+            </select>
+            <button type="submit" className="rounded-md bg-[#e23744] px-4 py-2 text-sm font-semibold text-white">
+              Go
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 text-sm">
+          <span className="text-slate-500">Near coordinates (optional):</span>
+          <label className="flex items-center gap-1 text-slate-600">
+            Latitude
+            <input name="lat" type="number" step="any" defaultValue={filters.lat} placeholder="12.9719" aria-label="Latitude" className="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+          </label>
+          <label className="flex items-center gap-1 text-slate-600">
+            Longitude
+            <input name="lng" type="number" step="any" defaultValue={filters.lng} placeholder="77.6412" aria-label="Longitude" className="w-28 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+          </label>
+          <label className="flex items-center gap-1 text-slate-600">
+            Radius
+            <select name="radiusKm" defaultValue={filters.radiusKm} aria-label="Search radius" className="rounded-md border border-slate-300 px-2 py-1.5 text-sm">
+              <option value="2">2 km</option>
+              <option value="5">5 km</option>
+              <option value="10">10 km</option>
+              <option value="25">25 km</option>
+              <option value="100">100 km</option>
+            </select>
+          </label>
         </div>
       </form>
 
@@ -84,7 +118,7 @@ export default async function BrowsePage({ searchParams }: PageProps<"/browse">)
         <h2 className="text-lg font-semibold text-slate-800">
           {total} {total === 1 ? "restaurant" : "restaurants"}
         </h2>
-        {(filters.q || filters.area || filters.cuisine) && (
+        {(filters.q || filters.area || filters.cuisine || filters.lat || filters.lng) && (
           <Link href="/browse" className="text-sm font-medium text-[#e23744] hover:underline">
             Clear filters
           </Link>

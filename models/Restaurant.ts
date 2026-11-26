@@ -8,6 +8,8 @@ export interface IRestaurant {
   area: string;
   address: string;
   description: string;
+  menuNames: string[];
+  location?: { type: "Point"; coordinates: [number, number] };
   imageUrl: string;
   etaMinutes: number;
   deliveryFee: number;
@@ -32,6 +34,11 @@ const restaurantSchema = new Schema<IRestaurant>(
     area: { type: String, required: true, trim: true, maxlength: 80 },
     address: { type: String, default: "" },
     description: { type: String, default: "", maxlength: 1000 },
+    menuNames: { type: [String], default: [] },
+    location: {
+      type: { type: String, enum: ["Point"] },
+      coordinates: [Number],
+    },
     imageUrl: { type: String, default: "" },
     etaMinutes: { type: Number, required: true, min: 5, max: 180 },
     deliveryFee: { type: Number, required: true, min: 0, max: 500 },
@@ -43,7 +50,20 @@ const restaurantSchema = new Schema<IRestaurant>(
   { timestamps: true },
 );
 
-restaurantSchema.index({ name: "text", cuisines: "text", area: "text" });
+restaurantSchema.index(
+  {
+    name: "text",
+    cuisines: "text",
+    area: "text",
+    description: "text",
+    menuNames: "text",
+  },
+  {
+    name: "restaurant_search_text",
+    weights: { name: 10, cuisines: 6, menuNames: 4, area: 3, description: 1 },
+  },
+);
+restaurantSchema.index({ location: "2dsphere" });
 restaurantSchema.index({ area: 1, isActive: 1, ratingAvg: -1 });
 restaurantSchema.index({ isActive: 1, createdAt: -1 });
 restaurantSchema.index({ owner: 1, createdAt: -1 });
